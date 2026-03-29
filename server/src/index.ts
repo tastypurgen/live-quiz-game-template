@@ -49,6 +49,11 @@ const sendError = (ws: WebSocket, message: string) => {
   sendMessage(ws, 'error', { message });
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const getTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+
 const sanitizePlayer = (player: Player) => ({
   name: player.name,
   index: player.index,
@@ -335,7 +340,17 @@ const removePlayerFromGame = (game: Game, userId: string) => {
 };
 
 const handleRegistration = (ws: WebSocket, data: unknown) => {
-  const payload = data as RegData;
+  if (!isRecord(data)) {
+    sendMessage(ws, 'reg', {
+      name: '',
+      index: '',
+      error: true,
+      errorText: 'Name and password are required.',
+    });
+    return;
+  }
+
+  const payload = data as unknown as RegData;
 
   if (
     !payload ||
@@ -353,8 +368,8 @@ const handleRegistration = (ws: WebSocket, data: unknown) => {
     return;
   }
 
-  const name = payload.name.trim();
-  const password = payload.password.trim();
+  const name = getTrimmedString(payload.name);
+  const password = getTrimmedString(payload.password);
   let user = usersByName.get(name);
 
   if (user && user.password !== password) {
@@ -414,7 +429,12 @@ const handleCreateGame = (ws: WebSocket, data: unknown) => {
     return;
   }
 
-  const payload = data as CreateGameData;
+  if (!isRecord(data)) {
+    sendError(ws, 'At least one valid question is required.');
+    return;
+  }
+
+  const payload = data as unknown as CreateGameData;
 
   if (!payload || !Array.isArray(payload.questions) || payload.questions.length === 0) {
     sendError(ws, 'At least one valid question is required.');
@@ -461,8 +481,14 @@ const handleJoinGame = (ws: WebSocket, data: unknown) => {
     return;
   }
 
-  const payload = data as JoinGameData;
-  const code = payload?.code?.trim().toUpperCase();
+  if (!isRecord(data)) {
+    sendError(ws, 'Room code is required.');
+    return;
+  }
+
+  const payload = data as unknown as JoinGameData;
+  const rawCode = getTrimmedString(payload.code);
+  const code = rawCode ? rawCode.toUpperCase() : '';
 
   if (!code) {
     sendError(ws, 'Room code is required.');
@@ -514,8 +540,14 @@ const handleStartGame = (ws: WebSocket, data: unknown) => {
     return;
   }
 
-  const payload = data as StartGameData;
-  const game = payload?.gameId ? gamesById.get(payload.gameId) : undefined;
+  if (!isRecord(data)) {
+    sendError(ws, 'Game not found.');
+    return;
+  }
+
+  const payload = data as unknown as StartGameData;
+  const gameId = getTrimmedString(payload.gameId);
+  const game = gameId ? gamesById.get(gameId) : undefined;
 
   if (!game) {
     sendError(ws, 'Game not found.');
@@ -549,8 +581,14 @@ const handleAnswer = (ws: WebSocket, data: unknown) => {
     return;
   }
 
-  const payload = data as AnswerData;
-  const game = payload?.gameId ? gamesById.get(payload.gameId) : undefined;
+  if (!isRecord(data)) {
+    sendError(ws, 'Game not found.');
+    return;
+  }
+
+  const payload = data as unknown as AnswerData;
+  const gameId = getTrimmedString(payload.gameId);
+  const game = gameId ? gamesById.get(gameId) : undefined;
 
   if (!game) {
     sendError(ws, 'Game not found.');
